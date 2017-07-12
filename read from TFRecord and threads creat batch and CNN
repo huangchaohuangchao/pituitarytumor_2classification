@@ -1,0 +1,193 @@
+import os
+from PIL import Image
+import numpy as np
+import tensorflow as tf
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
+import skimage
+from skimage import io
+from skimage import transform
+
+##reader and decode
+def read_and_decode(filename):
+    filename_queue=tf.train.string_input_producer([filename])
+    reader=tf.TFRecordReader()
+    _,serialized_example=reader.read(filename_queue)
+    features=tf.parse_single_example(serialized_example,
+                                     features={'label': tf.FixedLenFeature([],tf.int64),
+                                               'img_raw': tf.FixedLenFeature([],tf.string)})
+    img=tf.decode_raw(features['img_raw'],tf.uint8)
+    label=tf.cast(features['label'],tf.int32)
+    img=tf.reshape(img,[1,24,24,1])
+    img=tf.concat(axis=3,values=[img,img,img])
+    assert img.get_shape().as_list()[1:]==[24,24,3]
+    img=tf.reshape(img,[24,24,3])
+    img=tf.cast(img,tf.float32)  #normaliz?
+    
+    return img,label
+    
+##test read_and_decode
+#img,label=read_and_decode('/media/hc/ubuntu/CTL/train.tfrecords')
+#with tf.Session() as sess:
+#    init_op=tf.initialize_all_variables()
+#    sess.run(init_op)
+#    coord=tf.train.Coordinator()
+#    threads=tf.train.start_queue_runners(coord=coord)
+#    for i in range(5):
+#        example,l=sess.run([img,label])
+#        im=Image.fromarray(example,'RGB')
+#        im.save('/media/hc/ubuntu/CTL/'+str(i)+str(l)+'.jpg')
+#    coord.request_stop()
+#    coord.join(threads)
+
+
+## transforming learing---vgg16
+train_filename='/media/hc/ubuntu/CTL/train.tfrecords'
+test_filename='/media/hc/ubuntu/CTL/test.tfrecords'
+
+parameter_dict=np.load('/media/hc/ubuntu/mass/vgg16.npy',encoding='latin1').item()
+print 'vgg16.npy loaded'
+
+
+
+
+bgr=tf.placeholder('float32',[150,24,24,3])
+label=tf.placeholder('int32',[150,1])
+    
+
+with tf.name_scope('conv1_1'):
+    filt=tf.Variable(parameter_dict['conv1_1'][0],name='filter',trainable=False)
+    conv=tf.nn.conv2d(bgr,filt,[1,1,1,1],padding='SAME')
+    biases=tf.Variable(parameter_dict['conv1_1'][1],name='biases',trainable=False)
+    conv1_1=tf.nn.relu(tf.nn.bias_add(conv,biases))
+with tf.name_scope('conv1_2'):
+    filt=tf.Variable(parameter_dict['conv1_2'][0],name='filter',trainable=False)
+    conv=tf.nn.conv2d(conv1_1,filt,[1,1,1,1],padding='SAME')
+    biases=tf.Variable(parameter_dict['conv1_2'][1],name='biases',trainable=False)
+    conv1_2=tf.nn.relu(tf.nn.bias_add(conv,biases))
+    
+    
+
+with tf.name_scope('conv2_1'):
+    filt=tf.Variable(parameter_dict['conv2_1'][0],name='filter',trainable=False)
+    conv=tf.nn.conv2d(conv1_2,filt,[1,1,1,1],padding='SAME')
+    biases=tf.Variable(parameter_dict['conv2_1'][1],name='biases',trainable=False)
+    conv2_1=tf.nn.relu(tf.nn.bias_add(conv,biases))
+with tf.name_scope('conv2_2'):
+    filt=tf.Variable(parameter_dict['conv2_2'][0],name='filter',trainable=False)
+    conv=tf.nn.conv2d(conv2_1,filt,[1,2,2,1],padding='SAME')
+    biases=tf.Variable(parameter_dict['conv2_2'][1],name='biases',trainable=False)
+    conv2_2=tf.nn.relu(tf.nn.bias_add(conv,biases))
+
+
+with tf.name_scope('conv3_1'):
+    filt=tf.Variable(parameter_dict['conv3_1'][0],name='filter',trainable=False)
+    conv=tf.nn.conv2d(conv2_2,filt,[1,1,1,1],padding='SAME')
+    biases=tf.Variable(parameter_dict['conv3_1'][1],name='biases',trainable=False)
+    conv3_1=tf.nn.relu(tf.nn.bias_add(conv,biases))
+with tf.name_scope('conv3_2'):
+    filt=tf.Variable(parameter_dict['conv3_2'][0],name='filter',trainable=False)
+    conv=tf.nn.conv2d(conv3_1,filt,[1,1,1,1],padding='SAME')
+    biases=tf.Variable(parameter_dict['conv3_2'][1],name='biases',trainable=False)
+    conv3_2=tf.nn.relu(tf.nn.bias_add(conv,biases))
+with tf.name_scope('conv3_3'):
+    filt=tf.Variable(parameter_dict['conv3_3'][0],name='filter',trainable=False)
+    conv=tf.nn.conv2d(conv3_2,filt,[1,1,1,1],padding='SAME')
+    biases=tf.Variable(parameter_dict['conv3_3'][1],name='biases',trainable=False)
+    conv3_3=tf.nn.relu(tf.nn.bias_add(conv,biases))
+
+
+with tf.name_scope('conv4_1'):
+    filt=tf.Variable(parameter_dict['conv4_1'][0],name='filter',trainable=False)
+    conv=tf.nn.conv2d(conv3_3,filt,[1,2,2,1],padding='SAME')
+    biases=tf.Variable(parameter_dict['conv4_1'][1],name='biases',trainable=False)
+    conv4_1=tf.nn.relu(tf.nn.bias_add(conv,biases))
+with tf.name_scope('conv4_2'):
+    filt=tf.Variable(parameter_dict['conv4_2'][0],name='filter',trainable=False)
+    conv=tf.nn.conv2d(conv4_1,filt,[1,1,1,1],padding='SAME')
+    biases=tf.Variable(parameter_dict['conv4_2'][1],name='biases',trainable=False)
+    conv4_2=tf.nn.relu(tf.nn.bias_add(conv,biases))
+with tf.name_scope('conv4_3'):
+    filt=tf.Variable(parameter_dict['conv4_3'][0],name='filter',trainable=False)
+    conv=tf.nn.conv2d(conv4_2,filt,[1,1,1,1],padding='SAME')
+    biases=tf.Variable(parameter_dict['conv4_3'][1],name='biases',trainable=False)
+    conv4_3=tf.nn.relu(tf.nn.bias_add(conv,biases))
+   
+    
+    
+with tf.name_scope('conv5_1'):
+    filt=tf.Variable(parameter_dict['conv5_1'][0],name='filter',trainable=False)
+    conv=tf.nn.conv2d(conv4_3,filt,[1,1,1,1],padding='SAME')
+    biases=tf.Variable(parameter_dict['conv5_1'][1],name='biases',trainable=False)
+    conv5_1=tf.nn.relu(tf.nn.bias_add(conv,biases))
+with tf.name_scope('conv5_2'):
+    filt=tf.Variable(parameter_dict['conv5_2'][0],name='filter',trainable=False)
+    conv=tf.nn.conv2d(conv5_1,filt,[1,1,1,1],padding='SAME')
+    biases=tf.Variable(parameter_dict['conv5_2'][1],name='biases',trainable=False)
+    conv5_2=tf.nn.relu(tf.nn.bias_add(conv,biases))
+with tf.name_scope('conv5_3'):
+    filt=tf.Variable(parameter_dict['conv5_3'][0],name='filter',trainable=False)
+    conv=tf.nn.conv2d(conv5_2,filt,[1,1,1,1],padding='SAME')
+    biases=tf.Variable(parameter_dict['conv5_3'][1],name='biases',trainable=False)
+    conv5_3=tf.nn.relu(tf.nn.bias_add(conv,biases))   
+    
+with tf.name_scope('fc6'):
+    shape=conv5_3.get_shape().as_list()
+    dim=1
+    for d in shape[1:]:
+        dim=dim*d
+    x=tf.reshape(conv5_3,[-1,dim])
+    weights=tf.Variable(tf.truncated_normal([dim,1024],stddev=0.1))
+    biases=tf.Variable(tf.constant(0.1,shape=[1024]))
+    fc6=tf.nn.relu(tf.matmul(x,weights)+biases)
+with tf.name_scope('fc7'):
+    weights=tf.Variable(tf.truncated_normal([1024,256],stddev=0.1))
+    biases=tf.Variable(tf.constant(0.1,shape=[256]))
+    fc7=tf.nn.relu(tf.matmul(fc6,weights)+biases)     
+with tf.name_scope('fc8'):
+    weights=tf.Variable(tf.truncated_normal([256,2],stddev=0.1))
+    biases=tf.Variable(tf.constant(0.1,shape=[2]))
+    fc8=tf.nn.softmax(tf.matmul(fc7,weights)+biases)                          
+
+print 'network completed'
+
+cross_entropy=-tf.reduce_sum(tf.log(fc8+0.000001)*tf.one_hot(label,2))
+train_step=tf.train.AdamOptimizer(0.001).minimize(cross_entropy)
+correct_prediction=tf.equal(tf.cast(tf.argmax(fc8),tf.int32),label)
+accuracy=tf.reduce_mean(tf.cast(correct_prediction,'float'))
+
+
+train_img,train_label=read_and_decode(train_filename)
+test_img,test_label=read_and_decode(test_filename)
+
+
+min_after_dequeue=200
+batch_size=150
+capacity=min_after_dequeue+3*batch_size
+
+train_img_batch,train_label_batch=tf.train.shuffle_batch(
+                    [train_img,train_label],batch_size=batch_size,
+                    capacity=capacity,min_after_dequeue=min_after_dequeue)
+                    
+                    
+test_img_batch,test_label_batch=tf.train.shuffle_batch(
+                    [test_img,test_label],batch_size=batch_size,
+                    capacity=capacity,min_after_dequeue=min_after_dequeue)
+
+
+
+sess=tf.Session()
+init_op=tf.initialize_all_variables()
+sess.run(init_op)
+coord=tf.train.Coordinator()
+threads=tf.train.start_queue_runners(sess=sess,coord=coord)
+
+for i in range(1000):
+    if (i+1)%100==0:
+        cross_entrop,accurac=sess.run([cross_entropy,accuracy],feed_dict={bgr:test_img_batch.eval(session=sess),label:test_label_batch.eval(session=sess).reshape((150,1))})
+        print 'step %d test cross_entropy: %f accuracy: %f' % (i+1,cross_entrop,accurac)
+    else:
+        cross_entrop,_,accurac=sess.run([cross_entropy,train_step,accuracy],feed_dict={bgr:train_img_batch.eval(session=sess),label:train_label_batch.eval(session=sess).reshape((150,1))})  
+        print 'step %d train cross_entropy: %f accuracy: %f' % (i+1,cross_entrop,accurac)
+coord.request_stop()
+coord.join(threads)
